@@ -1,4 +1,3 @@
-﻿
 // GBN_client.cpp :  定义控制台应用程序的入口点。 
 // 
 //#include "stdafx.h" 
@@ -39,6 +38,7 @@ void printTips() {
 // FullName:    lossInLossRatio 
 // Access:        public   
 // Returns:      BOOL 
+
 //  Qualifier:  根据丢失率随机生成一个数字，判断是否丢失,丢失则返回TRUE，否则返回 FALSE
 // Parameter: float lossRatio [0,1] 
 //************************************ 
@@ -83,6 +83,7 @@ int main(int argc, char* argv[])
 	addrServer.sin_addr.S_un.S_addr = inet_addr(SERVER_IP);
 	addrServer.sin_family = AF_INET;
 	addrServer.sin_port = htons(SERVER_PORT);
+
 	//接收缓冲区 
 	char buffer[BUFFER_LENGTH];
 	ZeroMemory(buffer, sizeof(buffer));
@@ -97,6 +98,7 @@ int main(int argc, char* argv[])
 	float packetLossRatio = 0.2;  //默认包丢失率 0.2 
 	float ackLossRatio = 0.2;  //默认 ACK 丢失率 0.2 
 							   //用时间作为随机种子，放在循环的最外面 
+
 	srand((unsigned)time(NULL));
 	while (true) {
 		gets_s(buffer);
@@ -117,7 +119,6 @@ int main(int argc, char* argv[])
 			for (i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {
 				ZeroMemory(buffer_1[i_state], sizeof(buffer_1[i_state]));
 			}
-
 			BOOL ack_send[RECV_WIND_SIZE];//ack发送情况的记录，对应1-20的ack,刚开始全为false
 			int success_number = 0;// 窗口内成功接收的个数
 			for (i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {//记录哪一个成功接收了
@@ -171,6 +172,7 @@ int main(int argc, char* argv[])
 						}
 						//printf("recv a packet with a seq of %d\n", seq);
 
+
 						int window_seq = seq - waitSeq;
 						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
 							printf("recv a packet with a seq of %d\n", seq-1);
@@ -214,6 +216,7 @@ int main(int argc, char* argv[])
 							buffer[1] = '\0';
 						}
 						else {
+
 							//如果当前一个包都没有收到，则等待 Seq 为 1 的数据包，不是则不返回 ACK（因为并没有上一个正确的 ACK）
 							if (!recvSeq) {
 								continue;
@@ -236,6 +239,7 @@ int main(int argc, char* argv[])
 					sendto(socketClient, buffer, strlen(buffer) + 1, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
 					printf("send a end ANSWER\n");
 					Sleep(500);
+
 					
 					
 					goto success;//这个操作我也不知道最早是谁想出来的，反正就继承过来了
@@ -247,6 +251,7 @@ int main(int argc, char* argv[])
 		}
 		sendto(socketClient, buffer, strlen(buffer) + 1, 0,
 			(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+
 		ret = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer,&len);
 		printf("%s\n", buffer);
 		if (!strcmp(buffer, "Good bye!")) {
