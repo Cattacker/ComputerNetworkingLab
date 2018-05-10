@@ -23,14 +23,14 @@ int curAck;//当前等待确认的 ack
 int totalSeq;//收到的包的总数 
 int totalPacket;//需要发送的包总数 
 
-				//************************************ 
-				// Method:        getCurTime 
-				// FullName:    getCurTime 
-				// Access:        public   
-				// Returns:      void 
-				// Qualifier:  获取当前系统时间，结果存入 ptime 中 
-				// Parameter: char * ptime 
-				//************************************ 
+//************************************ 
+// Method:        getCurTime 
+// FullName:    getCurTime 
+// Access:        public   
+// Returns:      void 
+// Qualifier:  获取当前系统时间，结果存入 ptime 中 
+// Parameter: char * ptime 
+//************************************ 
 void getCurTime(char *ptime) {
 	char buffer[128];
 	memset(buffer, 0, sizeof(buffer));
