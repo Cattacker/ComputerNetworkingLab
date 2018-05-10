@@ -22,6 +22,10 @@ int curSeq;//当前数据包的 seq
 int curAck;//当前等待确认的 ack 
 int totalSeq;//收到的包的总数 
 int totalPacket;//需要发送的包总数 
+int totalAck = 0;//已经确认的包总数
+
+//这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
+int remainingPacket;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
 
 //************************************ 
 // Method:        getCurTime 
@@ -55,8 +59,8 @@ void getCurTime(char *ptime) {
 // Returns:      bool 
 // Qualifier:  当前序列号  curSeq  是否可用 
 //************************************ 
-bool seqIsAvailable() {
-	int step;
+int seqIsAvailable() {
+	/*int step;
 	step = curSeq - curAck;
 	step = step >= 0 ? step : step + SEQ_SIZE;
 	//序列号是否在当前发送窗口之内 
@@ -65,8 +69,14 @@ bool seqIsAvailable() {
 	}
 	if (ack[curSeq] == 1 || ack[curSeq] == 2) {
 		return true;
+	}*/
+	for (int i = 0; i < SEND_WIND_SIZE && i<remainingPacket; ++i) {
+		int index = (i + curAck) % SEQ_SIZE;
+		if (ack[index] == 1 || ack[index] == 2) {
+			return index;
+		}
 	}
-	return false;
+	return -1;
 }
 
 //************************************ 
@@ -101,14 +111,17 @@ void timeoutHandler() {
 // Parameter: char c 
 //************************************ 
 void ackHandler(char c) {
-	unsigned char index = (unsigned char)c - 1; //序列号减一 
+	unsigned char index = (unsigned char)c - 1; //序列号减一 ，表示对方确认收到了index号包
 	printf("Recv a ack of %d\n", index);
+	// 收到的ACK>=等待的ACK 且 收到的ACK在窗口内（ 窗口跨过了end->0，则一定在内 或 真的在内 ）
 	if (curAck <= index && (curAck + SEND_WIND_SIZE >= SEQ_SIZE ? true : index<curAck + SEND_WIND_SIZE)) {
 
 		ack[index] = 3;
 		while (ack[curAck] == 3) {
 			ack[curAck] = 1;
 			curAck = (curAck + 1) % SEQ_SIZE;
+			totalAck++;
+			remainingPacket--;
 
 		}
 	}
@@ -167,6 +180,7 @@ int main(int argc, char* argv[])
 	);
 	int length_lvxiya = GetFileSize(fhadle, 0);
 	totalPacket = length_lvxiya / 1024 + 1;
+	remainingPacket = totalPacket;//一开始这两个数是一样的
 	char *data = new char[1024 * (totalPacket + SEND_WIND_SIZE*SEND_WIND_SIZE)];
 	ZeroMemory(data, 1024 * (totalPacket + SEND_WIND_SIZE * SEND_WIND_SIZE));
 	std::ifstream icin;
@@ -214,6 +228,7 @@ int main(int argc, char* argv[])
 			printf("Shake hands stage\n");
 			int stage = 0;
 			bool runFlag = true;
+			int nowSeq;
 			while (runFlag) {
 				switch (stage) {
 				case 0://发送 205 阶段 
@@ -224,8 +239,7 @@ int main(int argc, char* argv[])
 					stage = 1;
 					break;
 				case 1://等待接收 200 阶段，没有收到则计数器+1，超时则放弃此次“连接”，等待从第一步开始
-					recvSize =
-						recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
+					recvSize = recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
 					if (recvSize < 0) {
 						++waitCount;
 						if (waitCount > 20) {
@@ -249,34 +263,24 @@ int main(int argc, char* argv[])
 					}
 					break;
 				case 2://数据传输阶段 
-					if (seqIsAvailable() && totalSeq - SEND_WIND_SIZE <= totalPacket) {
+					nowSeq = seqIsAvailable();//将要发的包序号
+					if (nowSeq >= 0) {
 						//发送给客户端的序列号从 1 开始 
-						buffer[0] = curSeq + 1;
-						ack[curSeq] = 0;
+						buffer[0] = nowSeq + 1;
+						ack[nowSeq] = 0;
 						//数据发送的过程中应该判断是否传输完成 
 						//为简化过程此处并未实现 
-						memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
-						printf("send a packet with a seq of %d\n", curSeq);
-						sendto(sockServer, buffer, BUFFER_LENGTH, 0,
-							(SOCKADDR*)&addrClient, sizeof(SOCKADDR));
-						++curSeq;
-						curSeq %= SEQ_SIZE;
-						++totalSeq;
+						//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
+						memcpy(&buffer[1], data + 1024 * (totalAck+nowSeq-curAck), 1024);
+						printf("send a packet with a seq of %d\n", nowSeq);
+						sendto(sockServer, buffer, BUFFER_LENGTH, 0,(SOCKADDR*)&addrClient, sizeof(SOCKADDR));
+						//++curSeq;
+						//curSeq %= SEQ_SIZE;
+						//++totalSeq;
 						Sleep(500);
 					}
-
-					else if (curSeq - curAck >= 0 ? curSeq - curAck <= SEND_WIND_SIZE : curSeq - curAck + SEQ_SIZE <= SEND_WIND_SIZE && totalSeq - SEND_WIND_SIZE <= totalPacket) {
-						curSeq++;
-						curSeq %= SEQ_SIZE;
-					}
-					else if (totalSeq - SEND_WIND_SIZE > totalPacket) {
-						memcpy(buffer, "good bye\0", 9);
-						runFlag = false;
-						break;
-					}
 					//等待 Ack，若没有收到，则返回值为-1，计数器+1 
-					recvSize =
-						recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
+					recvSize = recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
 					if (recvSize < 0) {
 						waitCount++;
 						//20 次等待 ack 则超时重传 
@@ -289,15 +293,41 @@ int main(int argc, char* argv[])
 					else {
 						//收到 ack 
 						ackHandler(buffer[0]);
+						if (totalAck == totalPacket) {
+							stage = 3;//准备结束整个过程
+							waitCount = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
+						}
 						waitCount = 0;
 					}
 					Sleep(500);
 					break;
+				case 3:
+					memcpy(buffer, "ojbk\0", 5);
+					if (waitCount > 20) {
+						sendto(sockServer, buffer, strlen(buffer) + 1, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
+						waitCount = 0;
+					}
+					else {
+						recvSize = recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
+						if (recvSize < 0) {
+							waitCount++;
+						}
+						else {
+							//收到 ack 
+							if (!memcmp(buffer, "otmspbbjbk\0", 11)) {
+								printf("数据传输成功！！！\n");
+								runFlag = false;//继承自Stage2的结束方式，没有验证是否靠谱
+							}
+							//waitCount = 0;//这个被注释掉了，因为我现在只想要结束的确认信息，不想要别的
+						}
+						break;
+					}
+					Sleep(500);
 				}
 			}
 		}
-		sendto(sockServer, buffer, strlen(buffer) + 1, 0, (SOCKADDR*)&addrClient,
-			sizeof(SOCKADDR));
+		//（个人）没搞懂这里为什么要发送
+		//sendto(sockServer, buffer, strlen(buffer) + 1, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
 		Sleep(500);
 	}
 	//关闭套接字，卸载库 

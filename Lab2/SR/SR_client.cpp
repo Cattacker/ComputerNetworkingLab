@@ -43,12 +43,13 @@ void printTips() {
 // Parameter: float lossRatio [0,1] 
 //************************************ 
 BOOL lossInLossRatio(float lossRatio) {
-	int lossBound = (int)(lossRatio * 100);
-	int r = rand() % 101;
+	/*int lossBound = (int)(lossRatio * 100);
+	int r = rand() % 101;//还101，mdzz
 	if (r <= lossBound) {
 		return TRUE;
 	}
-	return FALSE;
+	return FALSE;*/
+	return rand() % 100 < 5;
 }
 
 int main(int argc, char* argv[])
@@ -76,6 +77,8 @@ int main(int argc, char* argv[])
 		printf("The Winsock 2.2 dll was found okay\n");
 	}
 	SOCKET socketClient = socket(AF_INET, SOCK_DGRAM, 0);
+	int iMode = 1; //1：非阻塞，0：阻塞 
+	ioctlsocket(socketClient, FIONBIO, (u_long FAR*) &iMode);//非阻塞设置 
 	SOCKADDR_IN addrServer;
 	addrServer.sin_addr.S_un.S_addr = inet_addr(SERVER_IP);
 	addrServer.sin_family = AF_INET;
@@ -107,7 +110,7 @@ int main(int argc, char* argv[])
 			BOOL b;
 			unsigned char u_code;//状态码 
 			unsigned short seq;//包的序列号 
-			unsigned short recvSeq;//已确认的最大序列号 
+			unsigned short recvSeq;//已确认的最大序列号
 			unsigned short waitSeq;//等待的序列号 ，窗口大小为10，这个为最小的值
 			char buffer_1[RECV_WIND_SIZE][BUFFER_LENGTH];//接收到的缓冲区数据----------------add bylvxiya
 			int i_state = 0;
@@ -129,12 +132,13 @@ int main(int argc, char* argv[])
 			//---------------------------------
 			sendto(socketClient, "-testgbn", strlen("-testgbn") + 1, 0,
 				(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
-			while (true)
+			bool runFlag = true;
+			int receiveSize;
+			while (runFlag)
 			{
-				//等待 server 回复设置 UDP 为阻塞模式 
-				recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
 				switch (stage) {
 				case 0://等待握手阶段 
+					recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
 					u_code = (unsigned char)buffer[0];
 					if ((unsigned char)buffer[0] == 205)
 					{
@@ -149,87 +153,92 @@ int main(int argc, char* argv[])
 					}
 					break;
 				case 1://等待接收数据阶段 
-					if (!memcmp(buffer, "good bye\0", 9)) {
-						printf("数据传输成功！！！\n");
-						goto success;
-					}
-					seq = (unsigned short)buffer[0];
-					//随机法模拟包是否丢失 
-					b = lossInLossRatio(packetLossRatio);
-					if (b) {
-						printf("The packet with a seq of %d loss\n", seq);
-						continue;
-					}
-					printf("recv a packet with a seq of %d\n", seq);
-					//如果是期待的包的范围，正确接收，正常确认即可，如果小于期待的范围，直接回应ack 
-					if ((seq<waitSeq && (waitSeq + RECV_WIND_SIZE>SEQ_SIZE ? seq >= (waitSeq + RECV_WIND_SIZE) % SEQ_SIZE : true)))//在接收窗口范围内
-					{
-						buffer[0] = seq;
-						buffer[1] = '\0';
-					}
-					else if (seq >= waitSeq && (waitSeq + RECV_WIND_SIZE>SEQ_SIZE ? true : seq < (waitSeq + RECV_WIND_SIZE))) {//在接收窗口范围内
-																															   /*if (!(seq - waitSeq))
-																															   {
-																															   ++waitSeq;
-																															   if (waitSeq == 21){
-																															   waitSeq = 1;
-																															   }
-																															   //在这里应该向上层交付数据
-																															   }*/
-						memcpy(buffer_1[seq - waitSeq], &buffer[1], sizeof(buffer));
-						ack_send[seq - waitSeq] = true;
-						int ack_s = 0;
-						while (ack_send[ack_s] && ack_s<RECV_WIND_SIZE) {
-							//向上层传输数据							
-							out_result << buffer_1[ack_s];
-							//printf("%s",buffer_1[ack_s - 1]);
-							ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
-							waitSeq++;
-							if (waitSeq == 21) {
-								waitSeq = 1;
-							}
-							ack_s = ack_s + 1;
-						}
-						if (ack_s > 0) {
-							for (int i = 0; i < RECV_WIND_SIZE; i++) {
-								if (ack_s + i < RECV_WIND_SIZE)
-								{
-									ack_send[i] = ack_send[i + ack_s];
-									memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
-									ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
-								}
-								else
-								{
-									ack_send[i] = false;
-									ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
-								}
-
-							}
-						}
-
-						//输出数据 
-						//printf("%s\n",&buffer[1]); 
-						buffer[0] = seq;
-						recvSeq = seq;
-						buffer[1] = '\0';
-					}
-					else {
-						//如果当前一个包都没有收到，则等待 Seq 为 1 的数据包，不是则不返回 ACK（因为并没有上一个正确的 ACK）
-						if (!recvSeq) {
+					receiveSize = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
+					if (receiveSize > 0) {
+						if (!memcmp(buffer, "ojbk\0", 5)) {
+							printf("数据传输结束！\n");
+							stage = 2;//进入结束模式
+							waitCount = 21;//这样就可以直接发一个end ANS了，就是懒省事一下
 							continue;
 						}
-						buffer[0] = recvSeq;
-						buffer[1] = '\0';
+						seq = (unsigned short)buffer[0];
+						//随机法模拟包是否丢失 
+						b = lossInLossRatio(packetLossRatio);
+						if (b) {
+							printf("The packet with a seq of %d loss\n", seq-1);
+							Sleep(500);
+							continue;
+						}
+						//printf("recv a packet with a seq of %d\n", seq);
+
+						int window_seq = seq - waitSeq;
+						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+							printf("recv a packet with a seq of %d\n", seq-1);
+							ack_send[window_seq] = true;
+							memcpy(buffer_1[window_seq], buffer+2, sizeof(buffer)-2);
+							int ack_s = 0;
+							while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
+								//向上层传输数据							
+								out_result << buffer_1[ack_s];
+								//printf("%s",buffer_1[ack_s - 1]);
+								ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
+								waitSeq++;
+								if (waitSeq == 21) {
+									waitSeq = 1;
+								}
+								ack_s = ack_s + 1;
+							}
+							if (ack_s > 0) {
+								for (int i = 0; i < RECV_WIND_SIZE; i++) {
+									if (ack_s + i < RECV_WIND_SIZE)
+									{
+										ack_send[i] = ack_send[i + ack_s];
+										memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+										ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+									}
+									else
+									{
+										ack_send[i] = false;
+										ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
+									}
+
+								}
+							}
+
+							//如果是期待的包的范围，正确接收，正常确认即可，如果超出范围（一定是逻辑上落后，数值上不一定），直接回应ack 
+
+							//输出数据 
+							//printf("%s\n",&buffer[1]); 
+							buffer[0] = seq;
+							recvSeq = seq;
+							buffer[1] = '\0';
+						}
+						else {
+							//如果当前一个包都没有收到，则等待 Seq 为 1 的数据包，不是则不返回 ACK（因为并没有上一个正确的 ACK）
+							if (!recvSeq) {
+								continue;
+							}
+							buffer[0] = seq;//如果收到了过时的包，说明ACK丢了，就补一个ACK给服务器
+							buffer[1] = '\0';
+						}
+						b = lossInLossRatio(ackLossRatio);
+						if (b) {
+							printf("The  ack  of  %d  loss\n", (unsigned char)buffer[0] - 1);
+							Sleep(500);
+							continue;
+						}
+						sendto(socketClient, buffer, 2, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+						printf("send a ack of %d\n", (unsigned char)buffer[0] - 1);
 					}
-					b = lossInLossRatio(ackLossRatio);
-					if (b) {
-						printf("The  ack  of  %d  loss\n", (unsigned
-							char)buffer[0]);
-						continue;
-					}
-					sendto(socketClient, buffer, 2, 0,
-						(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
-					printf("send a ack of %d\n", (unsigned char)buffer[0]);
+					break;
+				case 2:
+					memcpy(buffer, "otmspbbjbk\0", 11);
+					sendto(socketClient, buffer, strlen(buffer) + 1, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+					printf("send a end ANSWER\n");
+					Sleep(500);
+					
+					
+					goto success;//这个操作我也不知道最早是谁想出来的，反正就继承过来了
 					break;
 				}
 				Sleep(500);
@@ -238,9 +247,7 @@ int main(int argc, char* argv[])
 		}
 		sendto(socketClient, buffer, strlen(buffer) + 1, 0,
 			(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
-		ret =
-			recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer,
-				&len);
+		ret = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer,&len);
 		printf("%s\n", buffer);
 		if (!strcmp(buffer, "Good bye!")) {
 			break;
