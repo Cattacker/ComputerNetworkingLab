@@ -1,5 +1,6 @@
-// GBN_client.cpp :  ¶¨Òå¿ØÖÆÌ¨Ó¦ÓÃ³ÌĞòµÄÈë¿Úµã¡£ 
+// GBN_client.cpp :  å®šä¹‰æ§åˆ¶å°åº”ç”¨ç¨‹åºçš„å…¥å£ç‚¹ã€‚ 
 // 
+//#include "stdafx.h" 
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdlib.h> 
@@ -8,20 +9,20 @@
 #include <fstream> 
 #pragma comment(lib,"ws2_32.lib") 
 
-#define SERVER_PORT  12340 //½ÓÊÕÊı¾İµÄ¶Ë¿ÚºÅ 
-#define SERVER_IP    "127.0.0.1" //  ·şÎñÆ÷µÄ IP µØÖ· 
+#define SERVER_PORT  12340 //æ¥æ”¶æ•°æ®çš„ç«¯å£å· 
+#define SERVER_IP    "127.0.0.1" //  æœåŠ¡å™¨çš„ IP åœ°å€ 
 
 const int BUFFER_LENGTH = 1026;
-const int SEQ_SIZE = 20;//½ÓÊÕ¶ËĞòÁĞºÅ¸öÊı£¬Îª 1~20 
-const int RECV_WIND_SIZE = 10;//½ÓÊÕ´°¿ÚµÄ´óĞ¡£¬ËûÒªĞ¡ÓÚµÈÓÚĞòºÅ´óĞ¡µÄÒ»°ë
+const int SEQ_SIZE = 20;//æ¥æ”¶ç«¯åºåˆ—å·ä¸ªæ•°ï¼Œä¸º 1~20 
+const int RECV_WIND_SIZE = 10;//æ¥æ”¶çª—å£çš„å¤§å°ï¼Œä»–è¦å°äºç­‰äºåºå·å¤§å°çš„ä¸€åŠ
 
 
 							  /****************************************************************/
-							  /*            -time  ´Ó·şÎñÆ÷¶Ë»ñÈ¡µ±Ç°Ê±¼ä
-							  -quit  ÍË³ö¿Í»§¶Ë
-							  -testgbn [X]  ²âÊÔ GBN Ğ­ÒéÊµÏÖ¿É¿¿Êı¾İ´«Êä
-							  [X] [0,1]  Ä£ÄâÊı¾İ°ü¶ªÊ§µÄ¸ÅÂÊ
-							  [Y] [0,1]  Ä£Äâ ACK ¶ªÊ§µÄ¸ÅÂÊ
+							  /*            -time  ä»æœåŠ¡å™¨ç«¯è·å–å½“å‰æ—¶é—´
+							  -quit  é€€å‡ºå®¢æˆ·ç«¯
+							  -testgbn [X]  æµ‹è¯• GBN åè®®å®ç°å¯é æ•°æ®ä¼ è¾“
+							  [X] [0,1]  æ¨¡æ‹Ÿæ•°æ®åŒ…ä¸¢å¤±çš„æ¦‚ç‡
+							  [Y] [0,1]  æ¨¡æ‹Ÿ ACK ä¸¢å¤±çš„æ¦‚ç‡
 							  */
 							  /****************************************************************/
 void printTips() {
@@ -37,14 +38,15 @@ void printTips() {
 // FullName:    lossInLossRatio 
 // Access:        public   
 // Returns:      BOOL 
-//  Qualifier:  ¸ù¾İ¶ªÊ§ÂÊËæ»úÉú³ÉÒ»¸öÊı×Ö£¬ÅĞ¶ÏÊÇ·ñ¶ªÊ§,¶ªÊ§Ôò·µ»ØTRUE£¬·ñÔò·µ»Ø FALSE
+
+//  Qualifier:  æ ¹æ®ä¸¢å¤±ç‡éšæœºç”Ÿæˆä¸€ä¸ªæ•°å­—ï¼Œåˆ¤æ–­æ˜¯å¦ä¸¢å¤±,ä¸¢å¤±åˆ™è¿”å›TRUEï¼Œå¦åˆ™è¿”å› FALSE
 // Parameter: float lossRatio [0,1] 
 //************************************ 
 BOOL lossInLossRatio(float lossRatio) {
 	/*int lossBound = (int)(lossRatio * 100);
-	int r = rand() % 101;//»¹101£¬mdzz
+	int r = rand() % 101;//è¿˜101ï¼Œmdzz
 	if (r <= lossBound) {
-	return TRUE;
+		return TRUE;
 	}
 	return FALSE;*/
 	return rand() % 100 < 5;
@@ -52,17 +54,17 @@ BOOL lossInLossRatio(float lossRatio) {
 
 int main(int argc, char* argv[])
 {
-	//¼ÓÔØÌ×½Ó×Ö¿â£¨±ØĞë£© 
+	//åŠ è½½å¥—æ¥å­—åº“ï¼ˆå¿…é¡»ï¼‰ 
 	WORD wVersionRequested;
 	WSADATA wsaData;
-	//Ì×½Ó×Ö¼ÓÔØÊ±´íÎóÌáÊ¾ 
+	//å¥—æ¥å­—åŠ è½½æ—¶é”™è¯¯æç¤º 
 	int err;
-	//°æ±¾ 2.2 
+	//ç‰ˆæœ¬ 2.2 
 	wVersionRequested = MAKEWORD(2, 2);
-	//¼ÓÔØ dll ÎÄ¼ş Scoket ¿â   
+	//åŠ è½½ dll æ–‡ä»¶ Scoket åº“   
 	err = WSAStartup(wVersionRequested, &wsaData);
 	if (err != 0) {
-		//ÕÒ²»µ½ winsock.dll 
+		//æ‰¾ä¸åˆ° winsock.dll 
 		printf("WSAStartup failed with error: %d\n", err);
 		return 1;
 	}
@@ -75,56 +77,57 @@ int main(int argc, char* argv[])
 		printf("The Winsock 2.2 dll was found okay\n");
 	}
 	SOCKET socketClient = socket(AF_INET, SOCK_DGRAM, 0);
-	int iMode = 1; //1£º·Ç×èÈû£¬0£º×èÈû 
-	ioctlsocket(socketClient, FIONBIO, (u_long FAR*) &iMode);//·Ç×èÈûÉèÖÃ 
+	int iMode = 1; //1ï¼šéé˜»å¡ï¼Œ0ï¼šé˜»å¡ 
+	ioctlsocket(socketClient, FIONBIO, (u_long FAR*) &iMode);//éé˜»å¡è®¾ç½® 
 	SOCKADDR_IN addrServer;
 	addrServer.sin_addr.S_un.S_addr = inet_addr(SERVER_IP);
 	addrServer.sin_family = AF_INET;
 	addrServer.sin_port = htons(SERVER_PORT);
-	//½ÓÊÕ»º³åÇø 
+
+	//æ¥æ”¶ç¼“å†²åŒº 
 	char buffer[BUFFER_LENGTH];
 	ZeroMemory(buffer, sizeof(buffer));
 	int len = sizeof(SOCKADDR);
-	//ÎªÁË²âÊÔÓë·şÎñÆ÷µÄÁ¬½Ó£¬¿ÉÒÔÊ¹ÓÃ  -time  ÃüÁî´Ó·şÎñÆ÷¶Ë»ñµÃµ±Ç°Ê±¼ä
-	//Ê¹ÓÃ  -testgbn [X] [Y]  ²âÊÔ GBN  ÆäÖĞ[X]±íÊ¾Êı¾İ°ü¶ªÊ§¸ÅÂÊ 
-	//                    [Y]±íÊ¾ ACK ¶ª°ü¸ÅÂÊ 
+	//ä¸ºäº†æµ‹è¯•ä¸æœåŠ¡å™¨çš„è¿æ¥ï¼Œå¯ä»¥ä½¿ç”¨  -time  å‘½ä»¤ä»æœåŠ¡å™¨ç«¯è·å¾—å½“å‰æ—¶é—´
+	//ä½¿ç”¨  -testgbn [X] [Y]  æµ‹è¯• GBN  å…¶ä¸­[X]è¡¨ç¤ºæ•°æ®åŒ…ä¸¢å¤±æ¦‚ç‡ 
+	//                    [Y]è¡¨ç¤º ACK ä¸¢åŒ…æ¦‚ç‡ 
 	printTips();
 	int ret;
-	int interval = 1;//ÊÕµ½Êı¾İ°üÖ®ºó·µ»Ø ack µÄ¼ä¸ô£¬Ä¬ÈÏÎª 1 ±íÊ¾Ã¿¸ö¶¼·µ»Ø ack£¬0 »òÕß¸ºÊı¾ù±íÊ¾ËùÓĞµÄ¶¼²»·µ»Ø ack
+	int interval = 1;//æ”¶åˆ°æ•°æ®åŒ…ä¹‹åè¿”å› ack çš„é—´éš”ï¼Œé»˜è®¤ä¸º 1 è¡¨ç¤ºæ¯ä¸ªéƒ½è¿”å› ackï¼Œ0 æˆ–è€…è´Ÿæ•°å‡è¡¨ç¤ºæ‰€æœ‰çš„éƒ½ä¸è¿”å› ack
 	char cmd[128];
-	float packetLossRatio = 0.2;  //Ä¬ÈÏ°ü¶ªÊ§ÂÊ 0.2 
-	float ackLossRatio = 0.2;  //Ä¬ÈÏ ACK ¶ªÊ§ÂÊ 0.2 
-							   //ÓÃÊ±¼ä×÷ÎªËæ»úÖÖ×Ó£¬·ÅÔÚÑ­»·µÄ×îÍâÃæ 
+	float packetLossRatio = 0.2;  //é»˜è®¤åŒ…ä¸¢å¤±ç‡ 0.2 
+	float ackLossRatio = 0.2;  //é»˜è®¤ ACK ä¸¢å¤±ç‡ 0.2 
+							   //ç”¨æ—¶é—´ä½œä¸ºéšæœºç§å­ï¼Œæ”¾åœ¨å¾ªç¯çš„æœ€å¤–é¢ 
+
 	srand((unsigned)time(NULL));
 	while (true) {
 		gets_s(buffer);
 		ret = sscanf(buffer, "%s%f%f", &cmd, &packetLossRatio, &ackLossRatio);
-		//¿ªÊ¼ GBN ²âÊÔ£¬Ê¹ÓÃ GBN Ğ­ÒéÊµÏÖ UDP ¿É¿¿ÎÄ¼ş´«Êä 
+		//å¼€å§‹ GBN æµ‹è¯•ï¼Œä½¿ç”¨ GBN åè®®å®ç° UDP å¯é æ–‡ä»¶ä¼ è¾“ 
 		if (!strcmp(cmd, "-testgbn")) {
 			printf("%s\n", "Begin to test GBN protocol, please don't abort the process");
 			printf("The  loss  ratio  of  packet  is  %.2f,the  loss  ratio  of  ack is %.2f\n", packetLossRatio, ackLossRatio);
 			int waitCount = 0;
 			int stage = 0;
 			BOOL b;
-			unsigned char u_code;//×´Ì¬Âë 
-			unsigned short seq;//°üµÄĞòÁĞºÅ 
-			unsigned short recvSeq;//ÒÑÈ·ÈÏµÄ×î´óĞòÁĞºÅ
-			unsigned short waitSeq;//µÈ´ıµÄĞòÁĞºÅ £¬´°¿Ú´óĞ¡Îª10£¬Õâ¸öÎª×îĞ¡µÄÖµ
-			char buffer_1[RECV_WIND_SIZE][BUFFER_LENGTH];//½ÓÊÕµ½µÄ»º³åÇøÊı¾İ----------------add bylvxiya
+			unsigned char u_code;//çŠ¶æ€ç  
+			unsigned short seq;//åŒ…çš„åºåˆ—å· 
+			unsigned short recvSeq;//å·²ç¡®è®¤çš„æœ€å¤§åºåˆ—å·
+			unsigned short waitSeq;//ç­‰å¾…çš„åºåˆ—å· ï¼Œçª—å£å¤§å°ä¸º10ï¼Œè¿™ä¸ªä¸ºæœ€å°çš„å€¼
+			char buffer_1[RECV_WIND_SIZE][BUFFER_LENGTH];//æ¥æ”¶åˆ°çš„ç¼“å†²åŒºæ•°æ®----------------add bylvxiya
 			int i_state = 0;
 			for (i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {
 				ZeroMemory(buffer_1[i_state], sizeof(buffer_1[i_state]));
 			}
-
-			BOOL ack_send[RECV_WIND_SIZE];//ack·¢ËÍÇé¿öµÄ¼ÇÂ¼£¬¶ÔÓ¦1-20µÄack,¸Õ¿ªÊ¼È«Îªfalse
-			int success_number = 0;// ´°¿ÚÄÚ³É¹¦½ÓÊÕµÄ¸öÊı
-			for (i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {//¼ÇÂ¼ÄÄÒ»¸ö³É¹¦½ÓÊÕÁË
+			BOOL ack_send[RECV_WIND_SIZE];//ackå‘é€æƒ…å†µçš„è®°å½•ï¼Œå¯¹åº”1-20çš„ack,åˆšå¼€å§‹å…¨ä¸ºfalse
+			int success_number = 0;// çª—å£å†…æˆåŠŸæ¥æ”¶çš„ä¸ªæ•°
+			for (i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {//è®°å½•å“ªä¸€ä¸ªæˆåŠŸæ¥æ”¶äº†
 				ack_send[i_state] = false;
 			}
 			std::ofstream out_result;
 			out_result.open("result.txt", std::ios::out | std::ios::trunc);
 			if (!out_result.is_open()) {
-				printf("ÎÄ¼ş´ò¿ªÊ§°Ü£¡£¡£¡\n");
+				printf("æ–‡ä»¶æ‰“å¼€å¤±è´¥ï¼ï¼ï¼\n");
 				continue;
 			}
 			//---------------------------------
@@ -135,7 +138,7 @@ int main(int argc, char* argv[])
 			while (runFlag)
 			{
 				switch (stage) {
-				case 0://µÈ´ıÎÕÊÖ½×¶Î 
+				case 0://ç­‰å¾…æ¡æ‰‹é˜¶æ®µ 
 					recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
 					u_code = (unsigned char)buffer[0];
 					if ((unsigned char)buffer[0] == 205)
@@ -150,33 +153,34 @@ int main(int argc, char* argv[])
 						waitSeq = 1;
 					}
 					break;
-				case 1://µÈ´ı½ÓÊÕÊı¾İ½×¶Î 
+				case 1://ç­‰å¾…æ¥æ”¶æ•°æ®é˜¶æ®µ 
 					receiveSize = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
 					if (receiveSize > 0) {
 						if (!memcmp(buffer, "ojbk\0", 5)) {
-							printf("Êı¾İ´«Êä½áÊø£¡\n");
-							stage = 2;//½øÈë½áÊøÄ£Ê½
-							waitCount = 21;//ÕâÑù¾Í¿ÉÒÔÖ±½Ó·¢Ò»¸öend ANSÁË£¬¾ÍÊÇÀÁÊ¡ÊÂÒ»ÏÂ
+							printf("æ•°æ®ä¼ è¾“ç»“æŸï¼\n");
+							stage = 2;//è¿›å…¥ç»“æŸæ¨¡å¼
+							waitCount = 21;//è¿™æ ·å°±å¯ä»¥ç›´æ¥å‘ä¸€ä¸ªend ANSäº†ï¼Œå°±æ˜¯æ‡’çœäº‹ä¸€ä¸‹
 							continue;
 						}
 						seq = (unsigned short)buffer[0];
-						//Ëæ»ú·¨Ä£Äâ°üÊÇ·ñ¶ªÊ§ 
+						//éšæœºæ³•æ¨¡æ‹ŸåŒ…æ˜¯å¦ä¸¢å¤± 
 						b = lossInLossRatio(packetLossRatio);
 						if (b) {
-							printf("The packet with a seq of %d loss\n", seq - 1);
+							printf("The packet with a seq of %d loss\n", seq-1);
 							Sleep(500);
 							continue;
 						}
 						//printf("recv a packet with a seq of %d\n", seq);
 
-						int window_seq = (seq - waitSeq + SEQ_SIZE) % SEQ_SIZE;
+
+						int window_seq = seq - waitSeq;
 						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
-							printf("recv a packet with a seq of %d\n", seq - 1);
+							printf("recv a packet with a seq of %d\n", seq-1);
 							ack_send[window_seq] = true;
-							memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+							memcpy(buffer_1[window_seq], buffer+2, sizeof(buffer)-2);
 							int ack_s = 0;
 							while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
-								//ÏòÉÏ²ã´«ÊäÊı¾İ							
+								//å‘ä¸Šå±‚ä¼ è¾“æ•°æ®							
 								out_result << buffer_1[ack_s];
 								//printf("%s",buffer_1[ack_s - 1]);
 								ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
@@ -203,20 +207,21 @@ int main(int argc, char* argv[])
 								}
 							}
 
-							//Èç¹ûÊÇÆÚ´ıµÄ°üµÄ·¶Î§£¬ÕıÈ·½ÓÊÕ£¬Õı³£È·ÈÏ¼´¿É£¬Èç¹û³¬³ö·¶Î§£¨Ò»¶¨ÊÇÂß¼­ÉÏÂäºó£¬ÊıÖµÉÏ²»Ò»¶¨£©£¬Ö±½Ó»ØÓ¦ack 
+							//å¦‚æœæ˜¯æœŸå¾…çš„åŒ…çš„èŒƒå›´ï¼Œæ­£ç¡®æ¥æ”¶ï¼Œæ­£å¸¸ç¡®è®¤å³å¯ï¼Œå¦‚æœè¶…å‡ºèŒƒå›´ï¼ˆä¸€å®šæ˜¯é€»è¾‘ä¸Šè½åï¼Œæ•°å€¼ä¸Šä¸ä¸€å®šï¼‰ï¼Œç›´æ¥å›åº”ack 
 
-							//Êä³öÊı¾İ 
+							//è¾“å‡ºæ•°æ® 
 							//printf("%s\n",&buffer[1]); 
 							buffer[0] = seq;
 							recvSeq = seq;
 							buffer[1] = '\0';
 						}
 						else {
-							//Èç¹ûµ±Ç°Ò»¸ö°ü¶¼Ã»ÓĞÊÕµ½£¬ÔòµÈ´ı Seq Îª 1 µÄÊı¾İ°ü£¬²»ÊÇÔò²»·µ»Ø ACK£¨ÒòÎª²¢Ã»ÓĞÉÏÒ»¸öÕıÈ·µÄ ACK£©
+
+							//å¦‚æœå½“å‰ä¸€ä¸ªåŒ…éƒ½æ²¡æœ‰æ”¶åˆ°ï¼Œåˆ™ç­‰å¾… Seq ä¸º 1 çš„æ•°æ®åŒ…ï¼Œä¸æ˜¯åˆ™ä¸è¿”å› ACKï¼ˆå› ä¸ºå¹¶æ²¡æœ‰ä¸Šä¸€ä¸ªæ­£ç¡®çš„ ACKï¼‰
 							if (!recvSeq) {
 								continue;
 							}
-							buffer[0] = seq;//Èç¹ûÊÕµ½ÁË¹ıÊ±µÄ°ü£¬ËµÃ÷ACK¶ªÁË£¬¾Í²¹Ò»¸öACK¸ø·şÎñÆ÷
+							buffer[0] = seq;//å¦‚æœæ”¶åˆ°äº†è¿‡æ—¶çš„åŒ…ï¼Œè¯´æ˜ACKä¸¢äº†ï¼Œå°±è¡¥ä¸€ä¸ªACKç»™æœåŠ¡å™¨
 							buffer[1] = '\0';
 						}
 						b = lossInLossRatio(ackLossRatio);
@@ -235,8 +240,9 @@ int main(int argc, char* argv[])
 					printf("send a end ANSWER\n");
 					Sleep(500);
 
-
-					goto success;//Õâ¸ö²Ù×÷ÎÒÒ²²»ÖªµÀ×îÔçÊÇË­Ïë³öÀ´µÄ£¬·´Õı¾Í¼Ì³Ğ¹ıÀ´ÁË
+					
+					
+					goto success;//è¿™ä¸ªæ“ä½œæˆ‘ä¹Ÿä¸çŸ¥é“æœ€æ—©æ˜¯è°æƒ³å‡ºæ¥çš„ï¼Œåæ­£å°±ç»§æ‰¿è¿‡æ¥äº†
 					break;
 				}
 				Sleep(500);
@@ -245,14 +251,15 @@ int main(int argc, char* argv[])
 		}
 		sendto(socketClient, buffer, strlen(buffer) + 1, 0,
 			(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
-		ret = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
+
+		ret = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer,&len);
 		printf("%s\n", buffer);
 		if (!strcmp(buffer, "Good bye!")) {
 			break;
 		}
 		printTips();
 	}
-	//¹Ø±ÕÌ×½Ó×Ö 
+	//å…³é—­å¥—æ¥å­— 
 	closesocket(socketClient);
 	WSACleanup();
 	return 0;
