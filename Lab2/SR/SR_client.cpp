@@ -173,7 +173,7 @@ int main(int argc, char* argv[])
 						//printf("recv a packet with a seq of %d\n", seq);
 
 
-						int window_seq = seq - waitSeq;
+						int window_seq = (seq - waitSeq + SEQ_SIZE) % SEQ_SIZE;
 						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
 							printf("recv a packet with a seq of %d\n", seq-1);
 							ack_send[window_seq] = true;
