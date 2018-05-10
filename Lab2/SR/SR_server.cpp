@@ -9,7 +9,7 @@
 
 #define SERVER_PORT  12340  //端口号 
 #define SERVER_IP    "0.0.0.0"  //IP 地址 
-const int BUFFER_LENGTH = 1026;    //缓冲区大小，（以太网中 UDP 的数据帧中包长度应小于 1480 字节） 
+const int BUFFER_LENGTH = 1027;    //缓冲区大小，（以太网中 UDP 的数据帧中包长度应小于 1480 字节） 
 const int SEND_WIND_SIZE = 10;//发送窗口大小为 10，GBN 中应满足  W + 1 <= N（W 为发送窗口大小，N 为序列号个数）
 							  //本例取序列号 0...19 共 20 个 
 							  //如果将窗口大小设为 1，则为停-等协议 
@@ -24,8 +24,10 @@ int curAck;//当前等待确认的 ack
 int totalSeq;//收到的包的总数 
 int totalPacket;//需要发送的包总数 
 int totalAck = 0;//已经确认的包总数
+int nowAck = 0;//当前的ack
 
-				 //这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
+
+			   //这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
 int remainingPacket;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
 
 					//************************************ 
@@ -272,11 +274,17 @@ int main(int argc, char* argv[])
 						//发送给客户端的序列号从 1 开始 
 						buffer[0] = nowSeq + 1;
 						ack[nowSeq] = 0;
+
+						nowAck = nowAck + 1;
+						if (nowAck == 21)
+							nowAck = 1;
+						buffer[1] = nowAck;
 						//数据发送的过程中应该判断是否传输完成 
 						//为简化过程此处并未实现 
 						//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
-						memcpy(&buffer[1], data + 1024 * (totalAck + nowSeq - curAck), 1024);
+						memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
 						printf("send a packet with a seq of %d\n", nowSeq);
+						printf("----------send a packet with a ack of %d\n", nowAck-1);
 						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
 						//++curSeq;
 						//curSeq %= SEQ_SIZE;
@@ -296,7 +304,9 @@ int main(int argc, char* argv[])
 					}
 					else {
 						//收到 ack 
-						ackHandler(buffer[0]);
+						ackHandler(buffer[1]);
+						printf("----------Recv a seq of %d\n", buffer[0] - 1);
+						//处理收到的数据
 						if (totalAck == totalPacket) {
 							stage = 3;//准备结束整个过程
 							waitCount = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
