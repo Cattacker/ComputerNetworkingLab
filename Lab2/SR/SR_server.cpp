@@ -1,3 +1,4 @@
+
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdlib.h> 
 #include <time.h> 
@@ -24,17 +25,17 @@ int totalSeq;//收到的包的总数
 int totalPacket;//需要发送的包总数 
 int totalAck = 0;//已经确认的包总数
 
-//这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
+				 //这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
 int remainingPacket;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
 
-//************************************ 
-// Method:        getCurTime 
-// FullName:    getCurTime 
-// Access:        public   
-// Returns:      void 
-// Qualifier:  获取当前系统时间，结果存入 ptime 中 
-// Parameter: char * ptime 
-//************************************ 
+					//************************************ 
+					// Method:        getCurTime 
+					// FullName:    getCurTime 
+					// Access:        public   
+					// Returns:      void 
+					// Qualifier:  获取当前系统时间，结果存入 ptime 中 
+					// Parameter: char * ptime 
+					//************************************ 
 void getCurTime(char *ptime) {
 	char buffer[128];
 	memset(buffer, 0, sizeof(buffer));
@@ -63,12 +64,12 @@ int seqIsAvailable() {
 	/*int step;
 	step = curSeq - curAck;
 	step = step >= 0 ? step : step + SEQ_SIZE;
-	//序列号是否在当前发送窗口之内 
+	//序列号是否在当前发送窗口之内
 	if (step >= SEND_WIND_SIZE) {
-		return false;
+	return false;
 	}
 	if (ack[curSeq] == 1 || ack[curSeq] == 2) {
-		return true;
+	return true;
 	}*/
 	for (int i = 0; i < SEND_WIND_SIZE && i<remainingPacket; ++i) {
 		int index = (i + curAck) % SEQ_SIZE;
@@ -114,7 +115,10 @@ void ackHandler(char c) {
 	unsigned char index = (unsigned char)c - 1; //序列号减一 ，表示对方确认收到了index号包
 	printf("Recv a ack of %d\n", index);
 	// 收到的ACK>=等待的ACK 且 收到的ACK在窗口内（ 窗口跨过了end->0，则一定在内 或 真的在内 ）
-	if (curAck <= index && (curAck + SEND_WIND_SIZE >= SEQ_SIZE ? true : index<curAck + SEND_WIND_SIZE)) {
+
+	//if (curAck <= index && (curAck + SEND_WIND_SIZE >= SEQ_SIZE ? true : index<curAck + SEND_WIND_SIZE)) 
+	if ((curAck + SEND_WIND_SIZE >= SEQ_SIZE) ? (curAck <= index || index <(curAck + SEND_WIND_SIZE + SEQ_SIZE) % SEQ_SIZE) : (curAck <= index && index<curAck + SEND_WIND_SIZE))
+	{
 
 		ack[index] = 3;
 		while (ack[curAck] == 3) {
@@ -175,16 +179,16 @@ int main(int argc, char* argv[])
 	ZeroMemory(buffer, sizeof(buffer));
 	//将测试数据读入内存 
 
-	HANDLE fhadle = CreateFile("../test.txt",
+	HANDLE fhadle = CreateFile("../test1.txt",
 		0, 0, NULL, OPEN_ALWAYS, 0, 0
 	);
 	int length_lvxiya = GetFileSize(fhadle, 0);
 	totalPacket = length_lvxiya / 1024 + 1;
 	remainingPacket = totalPacket;//一开始这两个数是一样的
-	char *data = new char[1024 * (totalPacket + SEND_WIND_SIZE*SEND_WIND_SIZE)];
+	char *data = new char[1024 * (totalPacket + SEND_WIND_SIZE * SEND_WIND_SIZE)];
 	ZeroMemory(data, 1024 * (totalPacket + SEND_WIND_SIZE * SEND_WIND_SIZE));
 	std::ifstream icin;
-	icin.open("../test.txt");
+	icin.open("../test1.txt");
 
 	//char data[1024 * 113];
 	//ZeroMemory(data, sizeof(data));
@@ -216,7 +220,7 @@ int main(int argc, char* argv[])
 			//进入 gbn 测试阶段 
 			//首先 server（server 处于 0 状态）向 client 发送 205 状态码（server进入 1 状态） 
 			//server  等待 client 回复 200 状态码，如果收到（server 进入 2 状态），	则开始传输文件，否则延时等待直至超时\
-							//在文件传输阶段，server 发送窗口大小设为 
+																			//在文件传输阶段，server 发送窗口大小设为 
 			ZeroMemory(buffer, sizeof(buffer));
 			int recvSize;
 			int waitCount = 0;
@@ -271,9 +275,9 @@ int main(int argc, char* argv[])
 						//数据发送的过程中应该判断是否传输完成 
 						//为简化过程此处并未实现 
 						//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
-						memcpy(&buffer[1], data + 1024 * (totalAck+nowSeq-curAck), 1024);
+						memcpy(&buffer[1], data + 1024 * (totalAck + nowSeq - curAck), 1024);
 						printf("send a packet with a seq of %d\n", nowSeq);
-						sendto(sockServer, buffer, BUFFER_LENGTH, 0,(SOCKADDR*)&addrClient, sizeof(SOCKADDR));
+						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
 						//++curSeq;
 						//curSeq %= SEQ_SIZE;
 						//++totalSeq;
