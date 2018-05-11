@@ -177,7 +177,7 @@ int main(int argc, char* argv[])
 						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
 							printf("recv a packet with a seq of %d\n", seq - 1);
 							ack_send[window_seq] = true;
-							memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+							memcpy(buffer_1[window_seq], buffer + 1, sizeof(buffer) - 1);
 							int ack_s = 0;
 							while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
 								//向上层传输数据							
