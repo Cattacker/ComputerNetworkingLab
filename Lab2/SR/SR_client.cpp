@@ -12,6 +12,9 @@
 #define SERVER_PORT  12340 //接收数据的端口号 
 #define SERVER_IP    "127.0.0.1" //  服务器的 IP 地址 
 
+//#define OUTPUT_CLIENT_TO_SERVER
+#define OUTPUT_SERVER_TO_CLIENT
+
 const int BUFFER_LENGTH = 1027;
 const int SEQ_SIZE = 20;//接收端序列号个数，为 1~20 
 const int RECV_WIND_SIZE = 10;//接收窗口的大小，他要小于等于序号大小的一半
@@ -27,10 +30,10 @@ int recv_ack[SEQ_SIZE];//收到 ack 情况，对应 0~19 的 ack
 int curSeq;//当前数据包的 seq 
 int curAck;//当前等待确认的 ack 
 int totalSeq;//收到的包的总数 
-int totalPacket;//需要发送的包总数 
+int totalPacket = 100;//需要发送的包总数 
 int totalAck = 0;//已经确认的包总数
-int remainingPacket = 26;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
-
+int remainingPacket = 100;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
+int waitCount1 = 0;
 						 /****************************************************************/
 						 /*            -time  从服务器端获取当前时间
 						 -quit  退出客户端
@@ -63,7 +66,17 @@ BOOL lossInLossRatio(float lossRatio) {
 	return TRUE;
 	}
 	return FALSE;*/
-	return rand() % 100 < 5;
+	return rand() % 10000 < 1000;
+}
+
+BOOL lossInLossRatio1(float lossRatio) {
+	//static int n = 0;
+	//return n++ % 5 == 3;
+	return lossInLossRatio(lossRatio);
+}
+
+BOOL lossInLossRatio0(float lossRatio) {
+	return lossInLossRatio(lossRatio);
 }
 
 //判断是否可以发送
@@ -79,7 +92,12 @@ int seqIsAvailable() {
 
 void ackHandler(char c) {
 	unsigned char index = (unsigned char)c - 1; //序列号减一 ，表示对方确认收到了index号包
-	printf("Recv a ack of %d\n", index);
+	if (index + 1 != NO_ACK)
+	{
+#ifdef OUTPUT_CLIENT_TO_SERVER
+		printf("Recv a ack of %d\n", index);
+#endif
+	}
 	// 收到的ACK>=等待的ACK 且 收到的ACK在窗口内（ 窗口跨过了end->0，则一定在内 或 真的在内 ）
 
 	//if (curAck <= index && (curAck + SEND_WIND_SIZE >= SEQ_SIZE ? true : index<curAck + SEND_WIND_SIZE)) 
@@ -90,6 +108,7 @@ void ackHandler(char c) {
 		while (recv_ack[curAck] == 3) {
 			recv_ack[curAck] = 1;
 			curAck = (curAck + 1) % SEQ_SIZE;
+			waitCount1 = 0;
 			totalAck++;
 			remainingPacket--;
 
@@ -106,7 +125,9 @@ void ackHandler(char c) {
 // Qualifier:  超时重传处理函数，滑动窗口内的数据帧都要重传 
 //************************************ 
 void timeoutHandler() {
+#ifdef OUTPUT_CLIENT_TO_SERVER	
 	printf("Timer out error.\n");
+#endif
 	int index, number = 0;
 	for (int i = 0; i< SEND_WIND_SIZE; ++i) {
 		index = (i + curAck) % SEQ_SIZE;
@@ -168,6 +189,12 @@ int main(int argc, char* argv[])
 							   //用时间作为随机种子，放在循环的最外面 
 
 	srand((unsigned)time(NULL));
+
+	int recvSize;
+	for (int i = 0; i < SEQ_SIZE; ++i) {
+		recv_ack[i] = 1;
+	}
+
 	while (true) {
 		gets_s(buffer);
 		ret = sscanf(buffer, "%s%f%f", &cmd, &packetLossRatio, &ackLossRatio);
@@ -176,7 +203,6 @@ int main(int argc, char* argv[])
 			printf("%s\n", "Begin to test GBN protocol, please don't abort the process");
 			printf("The  loss  ratio  of  packet  is  %.2f,the  loss  ratio  of  ack is %.2f\n", packetLossRatio, ackLossRatio);
 			int waitCount = 0;
-			int waitCount1 = 0;
 			int stage = 0;
 			BOOL b;
 			unsigned char u_code;//状态码 
@@ -225,9 +251,34 @@ int main(int argc, char* argv[])
 					}
 					break;
 				case 1://等待接收数据阶段 
+					buffer[0] = NO_SEQ;
+					buffer[1] = NO_ACK;
 					receiveSize = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
-					//是否要发ack
+					
+					//随机法模拟包是否丢失 
 					if (receiveSize > 0) {
+						b = lossInLossRatio1(packetLossRatio);
+						if (b) {
+							//printf("The packet with a seq of %d loss\n", seq - 1);
+							printf("---loss SERVER -> CLIENT :");
+#ifdef OUTPUT_SERVER_TO_CLIENT
+							if (buffer[0] != NO_SEQ) {
+								printf("seq %d, ", buffer[0] - 1);
+							}
+#endif
+							if (buffer[1] != NO_ACK) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
+								printf("ack %d", buffer[1] - 1);
+#endif
+							}
+							printf("\n");
+							buffer[0] = NO_SEQ;
+							buffer[1] = NO_ACK;
+							receiveSize = -1;
+						}
+					}
+					//是否要发ack
+					if (receiveSize > 0 && buffer[0] != NO_SEQ) {
 						if (!memcmp(buffer, "ojbk\0", 5)) {
 							printf("数据传输结束！\n");
 							stage = 2;//进入结束模式
@@ -235,26 +286,25 @@ int main(int argc, char* argv[])
 							continue;
 						}
 						seq = (unsigned short)buffer[0];
-						//随机法模拟包是否丢失 
-						b = lossInLossRatio(packetLossRatio);
-						if (b) {
-							printf("The packet with a seq of %d loss\n", seq - 1);
-							Sleep(500);
-							continue;
-						}
 						//printf("recv a packet with a seq of %d\n", seq);
 
+						waitCount1++;
 						ackHandler(buffer[1]);
-						if (totalAck == totalPacket) {
-							stage = 3;//准备结束整个过程
-							waitCount1 = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
+						/*if (totalAck == totalPacket) {
+						stage = 3;//准备结束整个过程
+						waitCount1 = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
+						}*/
+						if (waitCount1 > 20) {
+							timeoutHandler();
+							waitCount=0;
 						}
-						waitCount1 = 0;
 
 						//处理收到的包
 						int window_seq = (seq - waitSeq + SEQ_SIZE) % SEQ_SIZE;
 						if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+#ifdef OUTPUT_SERVER_TO_CLIENT
 							printf("recv a packet with a seq of %d\n", seq - 1);
+#endif
 							ack_send[window_seq] = true;
 							memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
 							int ack_s = 0;
@@ -303,42 +353,60 @@ int main(int argc, char* argv[])
 							buffer[1] = seq;//如果收到了过时的包，说明ACK丢了，就补一个ACK给服务器
 							buffer[2] = '\0';
 						}
-						b = lossInLossRatio(ackLossRatio);
+						
 						//如果ack丢了，就是这个包发不出去了
+						
+						nowSeq = seqIsAvailable();//将要发的包序号
+													//判断是否要发包
+						if (nowSeq >= 0) {
+							//发送给客户端的序列号从 1 开始 
+							buffer[0] = nowSeq + 1;
+							recv_ack[nowSeq] = 0;
+							//数据发送的过程中应该判断是否传输完成 
+							//为简化过程此处并未实现 
+							//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
+							//memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
+							//printf("%s", buffer);
+						}
+						else {
+							buffer[0] = NO_SEQ;
+						}
+						
+						b = lossInLossRatio0(ackLossRatio);
 						if (b) {
-							printf("The  ack  of  %d  loss\n", (unsigned char)buffer[0] - 1);
+							printf("---loss SERVER <- CLIENT : ", (unsigned char)buffer[0] - 1);
+#ifdef OUTPUT_SERVER_TO_CLIENT
+							printf("ack %d", (unsigned char)buffer[1] - 1);
+#endif
+#ifdef OUTPUT_CLIENT_TO_SERVER
+							if (buffer[0] != NO_SEQ) {
+								printf("seq %d", (unsigned char)buffer[0] - 1);
+							}
+#endif
+							printf("\n");
 							Sleep(500);
 							continue;
 						}
-						else {
-							nowSeq = seqIsAvailable();//将要发的包序号
-													  //判断是否要发包
-							if (nowSeq >= 0) {
-								//发送给客户端的序列号从 1 开始 
-								buffer[0] = nowSeq + 1;
-								recv_ack[nowSeq] = 0;
-								//数据发送的过程中应该判断是否传输完成 
-								//为简化过程此处并未实现 
-								//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
-								//memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
-								//printf("%s", buffer);
+						else if (nowSeq > 0 || buffer[1] != NO_ACK) {
+							sendto(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+							if (nowSeq > 0) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
 								printf("send a packet with a seq of %d\n", nowSeq);
-								printf("send a ack of %d\n", (unsigned char)buffer[0] - 1);
-								sendto(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&socketClient, sizeof(SOCKADDR));
-								//++curSeq;
-								//curSeq %= SEQ_SIZE;
-								//++totalSeq;
-								Sleep(500);
+#endif
 							}
-							else {
-								buffer[0] = NO_SEQ;
-								sendto(socketClient, buffer, 2, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
-								printf("send a ack of %d\n", (unsigned char)buffer[0] - 1);
+							if (buffer[1] != NO_ACK) {
+#ifdef OUTPUT_SERVER_TO_CLIENT
+								printf("send a ack of %d\n", (unsigned char)buffer[1] - 1);
+#endif
 							}
 						}
 					}
 					else {
 						waitCount1++;
+						if (buffer[1] != NO_ACK)
+						{
+							ackHandler(buffer[1]);
+						}
 						buffer[1] = NO_ACK;
 						//20 次等待 ack 则超时重传 
 						if (waitCount1 > 20)
@@ -356,15 +424,19 @@ int main(int argc, char* argv[])
 							//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
 							//memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
 							//printf("%s", buffer);
+
+#ifdef OUTPUT_CLIENT_TO_SERVER
 							printf("send a packet with a seq of %d\n", nowSeq);
-							sendto(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&socketClient, sizeof(SOCKADDR));
+#endif
+							sendto(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
 							//++curSeq;
 							//curSeq %= SEQ_SIZE;
 							//++totalSeq;
-							Sleep(500);
+							//Sleep(500);
 						}
 						//Sleep(500);
 					}
+					Sleep(500);
 					break;
 				case 2:
 					memcpy(buffer, "otmspbbjbk\0", 11);
@@ -383,6 +455,9 @@ int main(int argc, char* argv[])
 		}
 		sendto(socketClient, buffer, strlen(buffer) + 1, 0,
 			(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+
+		buffer[0] = NO_SEQ;
+		buffer[1] = NO_ACK;
 
 		ret = recvfrom(socketClient, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrServer, &len);
 		printf("%s\n", buffer);

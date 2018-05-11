@@ -9,7 +9,12 @@
 
 #define SERVER_PORT  12340  //端口号 
 #define SERVER_IP    "0.0.0.0"  //IP 地址 
+
+//#define OUTPUT_CLIENT_TO_SERVER
+#define OUTPUT_SERVER_TO_CLIENT
+
 const int BUFFER_LENGTH = 1027;    //缓冲区大小，（以太网中 UDP 的数据帧中包长度应小于 1480 字节） 
+const int RECV_WIND_SIZE = 10;//接收窗口的大小，他要小于等于序号大小的一半
 const int SEND_WIND_SIZE = 10;//发送窗口大小为 10，GBN 中应满足  W + 1 <= N（W 为发送窗口大小，N 为序列号个数）
 							  //本例取序列号 0...19 共 20 个 
 							  //如果将窗口大小设为 1，则为停-等协议 
@@ -26,8 +31,9 @@ int curAck;//当前等待确认的 ack
 int totalSeq;//收到的包的总数 
 int totalPacket;//需要发送的包总数 
 int totalAck = 0;//已经确认的包总数
-
-				 //这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
+int ack_going_to_send = NO_ACK;
+int waitCount = 0;
+//这个数字开始的时候不起作用，到最后用来限定窗口逐渐缩小
 int remainingPacket;//还剩余的没发过的，注意是没发过，发过的就算丢也也是发过的
 
 					//************************************ 
@@ -90,7 +96,9 @@ int seqIsAvailable() {
 // Qualifier:  超时重传处理函数，滑动窗口内的数据帧都要重传 
 //************************************ 
 void timeoutHandler() {
+#ifdef OUTPUT_SERVER_TO_CLIENT
 	printf("Timer out error.\n");
+#endif
 	int index, number = 0;
 	for (int i = 0; i< SEND_WIND_SIZE; ++i) {
 		index = (i + curAck) % SEQ_SIZE;
@@ -115,7 +123,9 @@ void timeoutHandler() {
 //************************************ 
 void ackHandler(char c) {
 	unsigned char index = (unsigned char)c - 1; //序列号减一 ，表示对方确认收到了index号包
+#ifdef OUTPUT_SERVER_TO_CLIENT
 	printf("Recv a ack of %d\n", index);
+#endif
 	// 收到的ACK>=等待的ACK 且 收到的ACK在窗口内（ 窗口跨过了end->0，则一定在内 或 真的在内 ）
 
 	//if (curAck <= index && (curAck + SEND_WIND_SIZE >= SEQ_SIZE ? true : index<curAck + SEND_WIND_SIZE)) 
@@ -126,6 +136,7 @@ void ackHandler(char c) {
 		while (ack[curAck] == 3) {
 			ack[curAck] = 1;
 			curAck = (curAck + 1) % SEQ_SIZE;
+			waitCount = 0;
 			totalAck++;
 			remainingPacket--;
 
@@ -225,8 +236,13 @@ int main(int argc, char* argv[])
 																						//在文件传输阶段，server 发送窗口大小设为 
 			ZeroMemory(buffer, sizeof(buffer));
 			int recvSize;
-			int waitCount = 0;
+
+			unsigned short waitSeq1;//等待的序列号 ，窗口大小为10，这个为最小的值
+			BOOL ack_send[RECV_WIND_SIZE];//ack发送情况的记录，对应1-20的ack,刚开始全为false
 			printf("Begain to test GBN protocol,please don't abort the process\n");
+			for (int i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {//记录哪一个成功接收了
+				ack_send[i_state] = false;
+			}
 			//加入了一个握手阶段 
 			//首先服务器向客户端发送一个 205 大小的状态码（我自己定义的）表示服务器准备好了，可以发送数据
 			//客户端收到 205 之后回复一个 200 大小的状态码，表示客户端准备好了，可以接收数据了
@@ -245,6 +261,8 @@ int main(int argc, char* argv[])
 					stage = 1;
 					break;
 				case 1://等待接收 200 阶段，没有收到则计数器+1，超时则放弃此次“连接”，等待从第一步开始
+					buffer[0] = NO_SEQ;
+					buffer[1] = NO_ACK;
 					recvSize = recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
 					if (recvSize < 0) {
 						++waitCount;
@@ -254,6 +272,7 @@ int main(int argc, char* argv[])
 							break;
 						}
 						Sleep(500);
+						waitSeq1 = 2;
 						continue;
 					}
 					else {
@@ -275,22 +294,40 @@ int main(int argc, char* argv[])
 						//发送给客户端的序列号从 1 开始 
 						buffer[0] = nowSeq + 1;
 						ack[nowSeq] = 0;
+						buffer[1] = ack_going_to_send;
+						if (ack_going_to_send != NO_ACK) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
+							printf("send a ack of %d\n", (unsigned char)buffer[1] - 1);
+#endif
+						}
 						//数据发送的过程中应该判断是否传输完成 
 						//为简化过程此处并未实现 
 						//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
 						memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
 						//printf("%s", buffer);
+#ifdef OUTPUT_SERVER_TO_CLIENT
 						printf("send a packet with a seq of %d\n", nowSeq);
+#endif
 						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
 						//++curSeq;
 						//curSeq %= SEQ_SIZE;
 						//++totalSeq;
 						Sleep(500);
 					}
-					else {
-
+					else if (ack_going_to_send != NO_ACK) {
+						buffer[0] = NO_SEQ;
+						buffer[1] = ack_going_to_send;
+						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
+						if (ack_going_to_send != NO_ACK) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
+							printf("send a ack of %d\n", (unsigned char)buffer[1] - 1);
+#endif
+						}
+						Sleep(500);
 					}
 					//等待 Ack，若没有收到，则返回值为-1，计数器+1 
+					buffer[0] = NO_SEQ;
+					buffer[1] = NO_ACK;
 					recvSize = recvfrom(sockServer, buffer, BUFFER_LENGTH, 0, ((SOCKADDR*)&addrClient), &length);
 					if (recvSize < 0) {
 						waitCount++;
@@ -300,15 +337,111 @@ int main(int argc, char* argv[])
 							timeoutHandler();
 							waitCount = 0;
 						}
+						ack_going_to_send = NO_ACK;
 					}
 					else {
 						//收到 ack 
-						ackHandler(buffer[1]);
-						if (totalAck == totalPacket) {
-							stage = 3;//准备结束整个过程
-							waitCount = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
+						if (buffer[1] != NO_ACK)
+						{
+							waitCount++;
+							ackHandler(buffer[1]);
+							if (totalAck == totalPacket) {
+								stage = 3;//准备结束整个过程
+								waitCount = 21;//这样第一次就可以直接发结束信息。只是懒省事而已
+							}
+							int seq = buffer[0];
+							if (seq != NO_SEQ)
+							{
+								int window_seq = (seq - waitSeq1 + SEQ_SIZE) % SEQ_SIZE;
+								if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
+									printf("recv a packet with a seq of %d\n", seq - 1);
+#endif
+									ack_send[window_seq] = true;
+									//memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+									int ack_s = 0;
+									while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
+										//向上层传输数据							
+										//out_result << buffer_1[ack_s];
+										//printf("%s",buffer_1[ack_s - 1]);
+										//ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
+										waitSeq1++;
+										if (waitSeq1 == 21) {
+											waitSeq1 = 1;
+										}
+										ack_s = ack_s + 1;
+									}
+									if (ack_s > 0) {
+										for (int i = 0; i < RECV_WIND_SIZE; i++) {
+											if (ack_s + i < RECV_WIND_SIZE)
+											{
+												ack_send[i] = ack_send[i + ack_s];
+												//memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+												//ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+											}
+											else
+											{
+												ack_send[i] = false;
+												//ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
+											}
+
+										}
+									}
+								}
+								ack_going_to_send = buffer[0];
+							}
+							else {
+								ack_going_to_send = NO_ACK;
+							}
 						}
-						waitCount = 0;
+						else
+						{
+							waitCount++;
+							int seq = buffer[0];
+							if (seq != NO_SEQ)
+							{
+								int window_seq = (seq - waitSeq1 + SEQ_SIZE) % SEQ_SIZE;
+								if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+#ifdef OUTPUT_CLIENT_TO_SERVER
+									printf("recv a packet with a seq of %d\n", seq - 1);
+#endif
+									ack_send[window_seq] = true;
+									//memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+									int ack_s = 0;
+									while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
+										//向上层传输数据							
+										//out_result << buffer_1[ack_s];
+										//printf("%s",buffer_1[ack_s - 1]);
+										//ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
+										waitSeq1++;
+										if (waitSeq1 == 21) {
+											waitSeq1 = 1;
+										}
+										ack_s = ack_s + 1;
+									}
+									if (ack_s > 0) {
+										for (int i = 0; i < RECV_WIND_SIZE; i++) {
+											if (ack_s + i < RECV_WIND_SIZE)
+											{
+												ack_send[i] = ack_send[i + ack_s];
+												//memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+												//ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+											}
+											else
+											{
+												ack_send[i] = false;
+												//ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
+											}
+
+										}
+									}
+								}
+								ack_going_to_send = seq;
+							}
+							else {
+								ack_going_to_send = NO_ACK;
+							}
+						}
 					}
 					Sleep(500);
 					break;
