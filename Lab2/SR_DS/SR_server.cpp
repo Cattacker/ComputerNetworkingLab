@@ -9,7 +9,8 @@
 
 #define SERVER_PORT  12340  //¶Ë¿ÚºÅ 
 #define SERVER_IP    "0.0.0.0"  //IP µØÖ· 
-const int BUFFER_LENGTH = 1026;    //»º³åÇø´óÐ¡£¬£¨ÒÔÌ«ÍøÖÐ UDP µÄÊý¾ÝÖ¡ÖÐ°ü³¤¶ÈÓ¦Ð¡ÓÚ 1480 ×Ö½Ú£© 
+const int BUFFER_LENGTH = 1027;    //»º³åÇø´óÐ¡£¬£¨ÒÔÌ«ÍøÖÐ UDP µÄÊý¾ÝÖ¡ÖÐ°ü³¤¶ÈÓ¦Ð¡ÓÚ 1480 ×Ö½Ú£© 
+const int RECV_WIND_SIZE = 10;//½ÓÊÕ´°¿ÚµÄ´óÐ¡£¬ËûÒªÐ¡ÓÚµÈÓÚÐòºÅ´óÐ¡µÄÒ»°ë
 const int SEND_WIND_SIZE = 10;//·¢ËÍ´°¿Ú´óÐ¡Îª 10£¬GBN ÖÐÓ¦Âú×ã  W + 1 <= N£¨W Îª·¢ËÍ´°¿Ú´óÐ¡£¬N ÎªÐòÁÐºÅ¸öÊý£©
 							  //±¾ÀýÈ¡ÐòÁÐºÅ 0...19 ¹² 20 ¸ö 
 							  //Èç¹û½«´°¿Ú´óÐ¡ÉèÎª 1£¬ÔòÎªÍ£-µÈÐ­Òé 
@@ -17,6 +18,8 @@ const int SEND_WIND_SIZE = 10;//·¢ËÍ´°¿Ú´óÐ¡Îª 10£¬GBN ÖÐÓ¦Âú×ã  W + 1 <= N£¨W Î
 const int SEQ_SIZE = 20; //ÐòÁÐºÅµÄ¸öÊý£¬´Ó 0~19 ¹²¼Æ 20 ¸ö 
 						 //ÓÉÓÚ·¢ËÍÊý¾ÝµÚÒ»¸ö×Ö½ÚÈç¹ûÖµÎª 0£¬ÔòÊý¾Ý»á·¢ËÍÊ§°Ü
 						 //Òò´Ë½ÓÊÕ¶ËÐòÁÐºÅÎª 1~20£¬Óë·¢ËÍ¶ËÒ»Ò»¶ÔÓ¦ 
+const int NO_SEQ = 89;
+const int NO_ACK = 88;
 
 int ack[SEQ_SIZE];//ÊÕµ½ ack Çé¿ö£¬¶ÔÓ¦ 0~19 µÄ ack 
 int curSeq;//µ±Ç°Êý¾Ý°üµÄ seq 
@@ -24,6 +27,7 @@ int curAck;//µ±Ç°µÈ´ýÈ·ÈÏµÄ ack
 int totalSeq;//ÊÕµ½µÄ°üµÄ×ÜÊý 
 int totalPacket;//ÐèÒª·¢ËÍµÄ°ü×ÜÊý 
 int totalAck = 0;//ÒÑ¾­È·ÈÏµÄ°ü×ÜÊý
+int ack_going_to_send = NO_ACK;
 
 				 //Õâ¸öÊý×Ö¿ªÊ¼µÄÊ±ºò²»Æð×÷ÓÃ£¬µ½×îºóÓÃÀ´ÏÞ¶¨´°¿ÚÖð½¥ËõÐ¡
 int remainingPacket;//»¹Ê£ÓàµÄÃ»·¢¹ýµÄ£¬×¢ÒâÊÇÃ»·¢¹ý£¬·¢¹ýµÄ¾ÍËã¶ªÒ²Ò²ÊÇ·¢¹ýµÄ
@@ -179,7 +183,7 @@ int main(int argc, char* argv[])
 	ZeroMemory(buffer, sizeof(buffer));
 	//½«²âÊÔÊý¾Ý¶ÁÈëÄÚ´æ 
 
-	HANDLE fhadle = CreateFile("../test1.txt",
+	HANDLE fhadle = CreateFile("../test.txt",
 		0, 0, NULL, OPEN_ALWAYS, 0, 0
 	);
 	int length_lvxiya = GetFileSize(fhadle, 0);
@@ -188,7 +192,7 @@ int main(int argc, char* argv[])
 	char *data = new char[1024 * (totalPacket + SEND_WIND_SIZE * SEND_WIND_SIZE)];
 	ZeroMemory(data, 1024 * (totalPacket + SEND_WIND_SIZE * SEND_WIND_SIZE));
 	std::ifstream icin;
-	icin.open("../test1.txt");
+	icin.open("../test.txt");
 
 	//char data[1024 * 113];
 	//ZeroMemory(data, sizeof(data));
@@ -224,7 +228,12 @@ int main(int argc, char* argv[])
 			ZeroMemory(buffer, sizeof(buffer));
 			int recvSize;
 			int waitCount = 0;
+			unsigned short waitSeq1;//µÈ´ýµÄÐòÁÐºÅ £¬´°¿Ú´óÐ¡Îª10£¬Õâ¸öÎª×îÐ¡µÄÖµ
+			BOOL ack_send[RECV_WIND_SIZE];//ack·¢ËÍÇé¿öµÄ¼ÇÂ¼£¬¶ÔÓ¦1-20µÄack,¸Õ¿ªÊ¼È«Îªfalse
 			printf("Begain to test GBN protocol,please don't abort the process\n");
+			for (int i_state = 0; i_state < RECV_WIND_SIZE; i_state++) {//¼ÇÂ¼ÄÄÒ»¸ö³É¹¦½ÓÊÕÁË
+				ack_send[i_state] = false;
+			}
 			//¼ÓÈëÁËÒ»¸öÎÕÊÖ½×¶Î 
 			//Ê×ÏÈ·þÎñÆ÷Ïò¿Í»§¶Ë·¢ËÍÒ»¸ö 205 ´óÐ¡µÄ×´Ì¬Âë£¨ÎÒ×Ô¼º¶¨ÒåµÄ£©±íÊ¾·þÎñÆ÷×¼±¸ºÃÁË£¬¿ÉÒÔ·¢ËÍÊý¾Ý
 			//¿Í»§¶ËÊÕµ½ 205 Ö®ºó»Ø¸´Ò»¸ö 200 ´óÐ¡µÄ×´Ì¬Âë£¬±íÊ¾¿Í»§¶Ë×¼±¸ºÃÁË£¬¿ÉÒÔ½ÓÊÕÊý¾ÝÁË
@@ -252,6 +261,7 @@ int main(int argc, char* argv[])
 							break;
 						}
 						Sleep(500);
+						waitSeq1 = 2;
 						continue;
 					}
 					else {
@@ -268,19 +278,34 @@ int main(int argc, char* argv[])
 					break;
 				case 2://Êý¾Ý´«Êä½×¶Î 
 					nowSeq = seqIsAvailable();//½«Òª·¢µÄ°üÐòºÅ
+					//Èç¹ûÒª·¢°ü
 					if (nowSeq >= 0) {
 						//·¢ËÍ¸ø¿Í»§¶ËµÄÐòÁÐºÅ´Ó 1 ¿ªÊ¼ 
 						buffer[0] = nowSeq + 1;
 						ack[nowSeq] = 0;
+						buffer[1] = ack_going_to_send;
+						if (ack_going_to_send != NO_ACK) {
+							printf("send a ack of %d\n", (unsigned char)buffer[1] - 1);
+						}
 						//Êý¾Ý·¢ËÍµÄ¹ý³ÌÖÐÓ¦¸ÃÅÐ¶ÏÊÇ·ñ´«ÊäÍê³É 
 						//Îª¼ò»¯¹ý³Ì´Ë´¦²¢Î´ÊµÏÖ 
 						//memcpy(&buffer[1], data + 1024 * (curSeq + (totalSeq / SEND_WIND_SIZE)*SEND_WIND_SIZE), 1024);
-						memcpy(&buffer[1], data + 1024 * (totalAck + nowSeq - curAck), 1024);
+						memcpy(&buffer[2], data + 1024 * (totalAck + nowSeq - curAck), 1024);
+						//printf("%s", buffer);
 						printf("send a packet with a seq of %d\n", nowSeq);
 						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
 						//++curSeq;
 						//curSeq %= SEQ_SIZE;
 						//++totalSeq;
+						Sleep(500);
+					}
+					else if(ack_going_to_send != NO_ACK){
+						buffer[0] = NO_SEQ;
+						buffer[1] = ack_going_to_send;
+						sendto(sockServer, buffer, BUFFER_LENGTH, 0, (SOCKADDR*)&addrClient, sizeof(SOCKADDR));
+						if (ack_going_to_send != NO_ACK) {
+							printf("send a ack of %d\n", (unsigned char)buffer[1] - 1);
+						}
 						Sleep(500);
 					}
 					//µÈ´ý Ack£¬ÈôÃ»ÓÐÊÕµ½£¬Ôò·µ»ØÖµÎª-1£¬¼ÆÊýÆ÷+1 
@@ -293,15 +318,106 @@ int main(int argc, char* argv[])
 							timeoutHandler();
 							waitCount = 0;
 						}
+						ack_going_to_send = NO_ACK;
 					}
 					else {
 						//ÊÕµ½ ack 
-						ackHandler(buffer[0]);
-						if (totalAck == totalPacket) {
-							stage = 3;//×¼±¸½áÊøÕû¸ö¹ý³Ì
-							waitCount = 21;//ÕâÑùµÚÒ»´Î¾Í¿ÉÒÔÖ±½Ó·¢½áÊøÐÅÏ¢¡£Ö»ÊÇÀÁÊ¡ÊÂ¶øÒÑ
+						if (buffer[1] != NO_ACK)
+						{
+							ackHandler(buffer[1]);
+							if (totalAck == totalPacket) {
+								stage = 3;//×¼±¸½áÊøÕû¸ö¹ý³Ì
+								waitCount = 21;//ÕâÑùµÚÒ»´Î¾Í¿ÉÒÔÖ±½Ó·¢½áÊøÐÅÏ¢¡£Ö»ÊÇÀÁÊ¡ÊÂ¶øÒÑ
+							}
+							waitCount = 0;
+							int seq = buffer[0];
+							if (seq != NO_SEQ)
+							{
+								int window_seq = (seq - waitSeq1 + SEQ_SIZE) % SEQ_SIZE;
+								if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+									printf("recv a packet with a seq of %d\n", seq - 1);
+									ack_send[window_seq] = true;
+									//memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+									int ack_s = 0;
+									while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
+										//ÏòÉÏ²ã´«ÊäÊý¾Ý							
+										//out_result << buffer_1[ack_s];
+										//printf("%s",buffer_1[ack_s - 1]);
+										//ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
+										waitSeq1++;
+										if (waitSeq1 == 21) {
+											waitSeq1 = 1;
+										}
+										ack_s = ack_s + 1;
+									}
+									if (ack_s > 0) {
+										for (int i = 0; i < RECV_WIND_SIZE; i++) {
+											if (ack_s + i < RECV_WIND_SIZE)
+											{
+												ack_send[i] = ack_send[i + ack_s];
+												//memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+												//ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+											}
+											else
+											{
+												ack_send[i] = false;
+												//ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
+											}
+
+										}
+									}
+								}
+								ack_going_to_send = buffer[0];
+							}
+							else {
+								ack_going_to_send = NO_ACK;
+							}
 						}
-						waitCount = 0;
+						else
+						{
+							int seq = buffer[0];
+							if (seq != NO_SEQ)
+							{
+								int window_seq = (seq - waitSeq1 + SEQ_SIZE) % SEQ_SIZE;
+								if (window_seq >= 0 && window_seq < RECV_WIND_SIZE && !ack_send[window_seq]) {
+									printf("recv a packet with a seq of %d\n", seq - 1);
+									ack_send[window_seq] = true;
+									//memcpy(buffer_1[window_seq], buffer + 2, sizeof(buffer) - 2);
+									int ack_s = 0;
+									while (ack_send[ack_s] && ack_s < RECV_WIND_SIZE) {
+										//ÏòÉÏ²ã´«ÊäÊý¾Ý							
+										//out_result << buffer_1[ack_s];
+										//printf("%s",buffer_1[ack_s - 1]);
+										//ZeroMemory(buffer_1[ack_s], sizeof(buffer_1[ack_s]));
+										waitSeq1++;
+										if (waitSeq1 == 21) {
+											waitSeq1 = 1;
+										}
+										ack_s = ack_s + 1;
+									}
+									if (ack_s > 0) {
+										for (int i = 0; i < RECV_WIND_SIZE; i++) {
+											if (ack_s + i < RECV_WIND_SIZE)
+											{
+												ack_send[i] = ack_send[i + ack_s];
+												//memcpy(buffer_1[i], buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+												//ZeroMemory(buffer_1[i + ack_s], sizeof(buffer_1[i + ack_s]));
+											}
+											else
+											{
+												ack_send[i] = false;
+												//ZeroMemory(buffer_1[i], sizeof(buffer_1[i]));
+											}
+
+										}
+									}
+								}
+								ack_going_to_send = seq;
+							}
+							else {
+								ack_going_to_send = NO_ACK;
+							}
+						}
 					}
 					Sleep(500);
 					break;
