@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
 			//进入 gbn 测试阶段 
 			//首先 server（server 处于 0 状态）向 client 发送 205 状态码（server进入 1 状态） 
 			//server  等待 client 回复 200 状态码，如果收到（server 进入 2 状态），	则开始传输文件，否则延时等待直至超时\
-																			//在文件传输阶段，server 发送窗口大小设为 
+																						//在文件传输阶段，server 发送窗口大小设为 
 			ZeroMemory(buffer, sizeof(buffer));
 			int recvSize;
 			int waitCount = 0;

@@ -1,7 +1,6 @@
-// Exp2_client.cpp : 定义控制台应用程序的入口点。
+// GBN_client.cpp : 定义控制台应用程序的入口点。
 //
-
-//#include "stdafx.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <WinSock2.h>
 #include <time.h>
@@ -10,7 +9,6 @@
 #define SERVER_IP "127.0.0.1" // 服务器的 IP 地址
 const int BUFFER_LENGTH = 1026;
 const int SEQ_SIZE = 20;//接收端序列号个数，为 1~20
-
 						/****************************************************************/
 						/* -time 从服务器端获取当前时间
 						-quit 退出客户端
@@ -19,7 +17,6 @@ const int SEQ_SIZE = 20;//接收端序列号个数，为 1~20
 						[Y] [0,1] 模拟 ACK 丢失的概率
 						*/
 						/****************************************************************/
-
 void printTips() {
 	printf("*****************************************\n");
 	printf("| -time to get current time |\n");
@@ -77,7 +74,8 @@ int main(int argc, char* argv[])
 	ZeroMemory(buffer, sizeof(buffer));
 	int len = sizeof(SOCKADDR);
 	//为了测试与服务器的连接，可以使用 -time 命令从服务器端获得当前时间
-	//使用 -testgbn [X] [Y] 测试 GBN 其中[X]表示数据包丢失概率
+	//使用 -testgbn [X] [Y] 测试 GBN 
+	//其中[X]表示数据包丢失概率
 	// [Y]表示 ACK 丢包概率
 	printTips();
 	int ret;
@@ -101,8 +99,7 @@ int main(int argc, char* argv[])
 			unsigned short seq;//包的序列号
 			unsigned short recvSeq;//接收窗口大小为 1，已确认的序列号
 			unsigned short waitSeq;//等待的序列号
-			sendto(socketClient, "-testgbn", strlen("-testgbn") + 1, 0,
-				(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+			sendto(socketClient, "-testgbn", strlen("-testgbn") + 1, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
 			while (true)
 			{
 				//等待 server 回复设置 UDP 为阻塞模式
@@ -115,7 +112,8 @@ int main(int argc, char* argv[])
 						printf("Ready for file transmission\n");
 						buffer[0] = 200;
 						buffer[1] = '\0';
-						sendto(socketClient, buffer, 2, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+						sendto(socketClient, buffer, 2, 0,
+							(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
 						stage = 1;
 						recvSeq = 0;
 						waitSeq = 1;
@@ -131,13 +129,13 @@ int main(int argc, char* argv[])
 					}
 					printf("recv a packet with a seq of %d\n", seq);
 					//如果是期待的包，正确接收，正常确认即可
-					if (waitSeq == seq) {
+					if (!(waitSeq - seq)) {
 						++waitSeq;
 						if (waitSeq == 21) {
 							waitSeq = 1;
 						}
 						//输出数据
-						printf("%s\n", &buffer[1]);
+						//printf("%s\n",&buffer[1]);
 						buffer[0] = seq;
 						recvSeq = seq;
 						buffer[1] = '\0';
@@ -152,10 +150,12 @@ int main(int argc, char* argv[])
 					}
 					b = lossInLossRatio(ackLossRatio);
 					if (b) {
-						printf("The ack of %d loss\n", (unsigned char)buffer[0]);
+						printf("The ack of %d loss\n", (unsigned
+							char)buffer[0]);
 						continue;
 					}
-					sendto(socketClient, buffer, 2, 0, (SOCKADDR*)&addrServer, sizeof(SOCKADDR));
+					sendto(socketClient, buffer, 2, 0,
+						(SOCKADDR*)&addrServer, sizeof(SOCKADDR));
 					printf("send a ack of %d\n", (unsigned char)buffer[0]);
 					break;
 				}
